@@ -21,7 +21,16 @@ def eval_policy(policy, eval_env, eval_episodes=10):
 
     # TODO: Implement the evaluation over eval_episodes and return the avg_reward
     avg_reward = 0.
-
+    
+    for i in range(eval_episodes):
+        done = False
+        state = eval_env.reset()
+        while not done:
+            action = policy.select_action(state)
+            next_state, reward, done, info = eval_env.step(action)
+            avg_reward += reward
+            state = next_state
+    avg_reward = avg_reward/eval_episodes
 
     return {'returns': avg_reward}
 
@@ -171,14 +180,34 @@ class TD3(object):
         # TODO: Update the critic network
         # Hint: You can use clamp() to clip values
         # Hint: Like before, pay attention to which variable should be detached.
+        next_action = self.actor_target.forward(next_state)
 
+        noise = torch.ones_like(next_action).data.normal_(0, self.policy_noise).to(device)
+        noise = noise.clamp(-self.noise_clip, self.noise_clip)
 
+        next_action = (next_action + noise).clamp(-self.max_action, self.max_action)
+
+        target_q1, target_q2 = self.critic_target.forward(next_state, next_action)
+        target = reward + not_done * self.discount * torch.min(target_q1, target_q2)
+        target = target.detach()
+
+        current_Q1, current_Q2 = self.critic.forward(state, action)
+
+        critic_loss = F.mse_loss(current_Q1, target) + F.mse_loss(current_Q2, target)
+        self.critic_optimizer.zero_grad()
+        critic_loss.backward()
+        self.critic_optimizer.step()
 
         # Delayed policy updates
         if self.total_it % self.policy_freq == 0:
 
             # TODO: Update the policy network
-            
+            predict_action = self.actor.forward(state)
+            policy_loss = -self.critic.forward(state, predict_action)[0].mean()
+
+            self.actor_optimizer.zero_grad()
+            policy_loss.backward()
+            self.actor_optimizer.step()
 
             # Update the frozen target models, both actor and critic
             for param, target_param in zip(self.critic.parameters(), self.critic_target.parameters()):

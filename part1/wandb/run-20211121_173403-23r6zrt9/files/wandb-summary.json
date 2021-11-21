@@ -1,0 +1,1 @@
+{"train/": {"critic_loss": 1.2691079378128052, "critic": 85.79283142089844}, "_runtime": 5860, "_timestamp": 1637514703, "_step": 200039, "eval/": {"returns": 1000.0, "timesteps": 195000}, "_wandb": {"runtime": 5861}}
