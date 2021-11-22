@@ -123,8 +123,21 @@ class PPOBuffer(object):
         # Hint: https://www.davidsilver.uk/wp-content/uploads/2020/03/MC-TD.pdf should be helpful
         #       Page 47 (Telescoping in TD(\lambda)) shows how to calculate returns $G^{\lambda}_t$.
         #       Also notice that in this page, $G^{\lambda}t - V(s_t)$ equals to the equation (11) in the PPO paper
-
-
+        
+        #print('returns: ', self.returns.shape)
+        #print('value: ', self.values.shape)
+        #print('n_value: ', values.shape)
+        #print('dones: ', dones.shape)
+        A = 0.
+        for i in reversed(range(self.buffer_size)):
+            if i == self.buffer_size - 1:
+                delta = self.rewards[i] + self.gamma * (1 - done) * last_value.cpu().numpy()
+                A = A * self.gamma * self.gae_lambda * (1 - done) + delta - self.values[i] 
+            else:
+                delta = self.rewards[i] + self.gamma * (1 - self.start_episodes[i+1]) * self.values[i+1]
+                A = A * self.gamma * self.gae_lambda * (1 - self.start_episodes[i+1]) + delta - self.values[i] 
+            self.advantages[i] = A
+            self.returns[i] = A + self.values[i]
 
 
     def get(self, batch_size):
@@ -217,8 +230,18 @@ class PPO(object):
             # Hint: Notice the type of a variable. Is it a numpy, a tenser on CPU or a tensor on GPU?
             # Hint: We use gym.wrappers.RecordEpisodeStatistics(env) to automatically reset env at the end of one episode. See make_env().
             # Hint: Call self.buffer.add() to fill needed varialbes into buffer.
+            states = torch.tensor(self.states).to(device)
+            action, action_log_prob, entropy = self.agent.get_action(states)
+            action = action.detach().cpu().numpy()
+            action_log_prob = action_log_prob.detach().cpu().numpy()
 
+            value = self.agent.get_value(states)
+            value = value.detach().cpu().numpy()
+            next_state, reward, done, infos = self.envs.step(action)
 
+            self.buffer.add(self.states, action, reward, self.start_episodes, value, action_log_prob)
+            self.states = next_state
+            self.start_episodes = done
 
 
             # Unlike TD3, in PPO, we didn't process the done flag when episode_timesteps == env._max_episode_steps,
@@ -250,11 +273,24 @@ class PPO(object):
                 # Hint: self.agent.get_value() returns new_values
 
                 # 1. complete the missing losses: pg_loss, entropy_loss and v_loss
-                
+                values = self.agent.get_value(states)
+                v_loss = F.mse_loss(values, returns.detach())
+
+                actions, new_logprobs, entropy = self.agent.get_action(states, action = actions)
+
+                ratio = (new_logprobs - logprobs).exp()
+                surrogate1 = advantages.detach() * ratio
+                surrogate2 = advantages.detach() * ratio.clamp(1 - self.clip_ratio, 1 + self.clip_ratio)
+                pg_loss = -torch.min(surrogate1, surrogate2).mean()
+
+                entropy_loss = entropy.mean()
+
                 loss = pg_loss - self.ent_coef * entropy_loss + self.vf_coef * v_loss
 
                 # 2. update weights with self.optimizer
-
+                self.optimizer.zero_grad()
+                loss.backward()
+                self.optimizer.step()
 
                 # stats
                 approx_kl = (logprobs - new_logprobs).mean()
@@ -384,7 +420,7 @@ if __name__ == "__main__":
     for update in tqdm.tqdm(range(1, num_updates+1)):
         # collect data from env and return the stats
         eval_info = ppo.collect_data(num_timesteps_per_env=args.num_timesteps_per_env)
-
+        
         for k, v in eval_info.items():
             wandb.log({'eval/': {'timesteps': k, 'returns': v}})
 
