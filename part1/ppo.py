@@ -31,11 +31,23 @@ class Agent(nn.Module):
         # Hint: When initializing neural networks, you can use the default std. 
         #       But for the last layer of critic, set std=1. And for the last layer of actor_mean, set std=0.01. 
         #       actor_logstd should be a learnable value as in previous assignments, and its initial value is 0
-        self.critic = 
+        self.critic = nn.Sequential(
+                        layer_init(nn.Linear(state_dim, 64)),
+                        nn.Tanh(),
+                        layer_init(nn.Linear(64, 64)),
+                        nn.Tanh(),
+                        layer_init(nn.Linear(64, 1), std = 1),
+        )
         
-        self.actor_mean = 
+        self.actor_mean = nn.Sequential(
+                        layer_init(nn.Linear(state_dim, 64)),
+                        nn.Tanh(),
+                        layer_init(nn.Linear(64, 64)),
+                        nn.Tanh(),
+                        layer_init(nn.Linear(64, action_dim), std = 0.01),
+        )
 
-        self.actor_logstd = 
+        self.actor_logstd = torch.nn.Parameter(torch.Tensor([0.0])) 
 
     def get_action(self, x, action=None):
         action_mean = self.actor_mean(x)
