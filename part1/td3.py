@@ -21,7 +21,6 @@ def eval_policy(policy, eval_env, eval_episodes=10):
 
     # TODO: Implement the evaluation over eval_episodes and return the avg_reward
     avg_reward = 0.
-    
     for i in range(eval_episodes):
         done = False
         state = eval_env.reset()
@@ -181,6 +180,11 @@ class TD3(object):
         # Hint: You can use clamp() to clip values
         # Hint: Like before, pay attention to which variable should be detached.
         next_action = self.actor_target.forward(next_state)
+        
+        # for Q4 - Noise decay 
+        # comment the following 2 lines for q3
+        if self.total_it % 1000 == 0:
+            self.policy_noise = self.policy_noise * 0.995
 
         noise = torch.ones_like(next_action).data.normal_(0, self.policy_noise).to(device)
         noise = noise.clamp(-self.noise_clip, self.noise_clip)
